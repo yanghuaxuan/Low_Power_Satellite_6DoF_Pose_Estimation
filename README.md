@@ -2,4 +2,6 @@
 
 Work in progress (February 2026)
 
-Download dataset from: https://zenodo.org/records/15861758
+Download FRESH dataset from: https://zenodo.org/records/15861758
+
+Requirements in "requirements.txt"

@@ -1,0 +1,11 @@
+# Create new virtual environment
+python -m venv venv
+
+# Activate virtual environment
+.\venv\Scripts\Activate.ps1
+
+# Export ALL installed packages with exact versions
+pip freeze > requirements.txt
+
+# Install all packages from requirements.txt
+pip install -r requirements.txt

@@ -1,2 +1,4 @@
 _downloads/
 _dataset/
+venv/
+__pycache__/
