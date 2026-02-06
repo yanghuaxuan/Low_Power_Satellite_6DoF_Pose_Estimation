@@ -1,6 +1,7 @@
 # train.py
 
 import torch
+torch.autograd.set_detect_anomaly(True)
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -106,7 +107,7 @@ def main(args):
 
     # Optimizer & Scheduler
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     criterion = pose_loss
 
     # Train with early stopping
@@ -122,7 +123,7 @@ def main(args):
         val_loss   = validate(model, val_loader, criterion, device)
 
         # Print loss
-        print(f"Epoch [{epoch}/{args.epochs}] | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
+        print(f"Epoch [{epoch}/{args.epochs}] | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f} | LR: {optimizer.param_groups[0]['lr']:.6f}")
 
         # Log to Tensorboard
         writer.add_scalar("Train/loss_epoch", train_loss, epoch)
@@ -135,7 +136,7 @@ def main(args):
         if val_loss < best_val_loss * (1 - min_delta_pct):
             best_val_loss = val_loss
             epochs_no_improve = 0
-            torch.save(model.state_dict(), os.path.join(args.save_dir, "best_model.pth"))
+            torch.save(model.state_dict(), os.path.join(args.save_dir, f"model-{args.satellite}-b{args.batch_size}-e{args.epochs}-lr{args.lr}", "best_model.pth"))
             print(f"→ Improved! Saved best model (val_loss: {val_loss:.6f})")
         else:
             epochs_no_improve += 1
@@ -156,10 +157,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train RGB-Event 6D Pose Network")
     parser.add_argument("--batch_size",   type=int,   default=8,       help="Batch size")
-    parser.add_argument("--epochs",       type=int,   default=50,      help="Number of epochs")
+    parser.add_argument("--epochs",       type=int,   default=100,      help="Number of epochs")
     parser.add_argument("--lr",           type=float, default=1e-3,     help="Learning rate")
     parser.add_argument("--satellite",    type=str,   default="cassini", help="Satellite name")
-    parser.add_argument("--save_dir",     type=str,   default="checkpoints", help="Save directory")
+    parser.add_argument("--save_dir",     type=str,   default="main/_2_train/trained_models", help="Save directory")
     
     args = parser.parse_args()
     main(args)

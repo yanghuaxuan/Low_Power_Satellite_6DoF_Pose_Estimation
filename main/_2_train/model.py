@@ -10,7 +10,7 @@ class SimpleConvBlock(nn.Module):
         layers = [
             nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
         ]
         if pool:
             layers.append(nn.MaxPool2d(2, 2))
@@ -56,35 +56,35 @@ class RGBEventPoseNet(nn.Module):
         self.fusion = nn.Sequential(
             nn.Linear(feat_dim, 1024),
             nn.BatchNorm1d(1024),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Dropout(0.3),
 
             nn.Linear(1024, 512),
             nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Dropout(0.2),
 
             nn.Linear(512, 256), 
             nn.BatchNorm1d(256),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Dropout(0.2),
 
             nn.Linear(256, 128),  
             nn.BatchNorm1d(128),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Dropout(0.1),
 
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
 
             nn.Linear(64, 32),
             nn.BatchNorm1d(32),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
 
             nn.Linear(32, 16),
             nn.BatchNorm1d(16),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
 
             nn.Linear(16, 7), # final 7D output: [tx, ty, tz, qx, qy, qz, qw]
         )
@@ -105,7 +105,9 @@ class RGBEventPoseNet(nn.Module):
         # Optional: normalize quaternion part (qx,qy,qz,qw)
         quat = pose[:, 3:]
         quat_norm = torch.norm(quat, p=2, dim=1, keepdim=True) + 1e-8
-        pose[:, 3:] = quat / quat_norm
+        quat_normalized = quat / quat_norm
+        
+        pose = torch.cat([pose[:, :3], quat_normalized], dim=1)
 
         return pose
 

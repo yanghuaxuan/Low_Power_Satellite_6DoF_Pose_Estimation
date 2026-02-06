@@ -151,4 +151,4 @@ class SatellitePoseDataset(Dataset):
         event_aug = self.event_transform(image=augmented['event'])
         event_img = event_aug['image']  # tensor, normalized -> event_img.shape = [1, H, W]
 
-        return rgb_img, event_img, pose
+        return rgb_img.float(), event_img.float(), pose
