@@ -3,6 +3,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="PIL")  # hides most PIL/PNG warnings
+warnings.filterwarnings("ignore", message="libpng warning")           # specifically targets the libpng spam
+warnings.filterwarnings("ignore", message=".*eXIf: duplicate.*")
+
+# Silence libpng via environment (most effective)
+import os
+os.environ["LIBPNG_NO_WARNINGS"] = "1"
+
 class SimpleConvBlock(nn.Module):
     """Basic convolutional block: Conv → BN → ReLU → optional MaxPool"""
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, pool=False):
@@ -53,7 +62,7 @@ class RGBEventPoseNet(nn.Module):
         feat_dim = base_channels * 16 * 2  # RGB + Event concatenated
 
         # Fusion & regression head
-        self.fusion = nn.Sequential(
+        self.pos_head = nn.Sequential(
             nn.Linear(feat_dim, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
@@ -86,8 +95,47 @@ class RGBEventPoseNet(nn.Module):
             nn.BatchNorm1d(16),
             nn.ReLU(),
 
-            nn.Linear(16, 7), # final 7D output: [tx, ty, tz, qx, qy, qz, qw]
+            nn.Linear(16, 3),  # [tx, ty, tz]
         )
+
+        # Fusion & regression head
+        self.rot_head = nn.Sequential(
+            nn.Linear(feat_dim, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(512, 256), 
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(256, 128),  
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+
+            nn.Linear(32, 16),
+            nn.BatchNorm1d(16),
+            nn.ReLU(),
+
+            nn.Linear(16, 4),  # [qx, qy, qz, qw]
+        )
+
+
 
     def forward(self, rgb, event):
         # Feature extraction
@@ -100,15 +148,25 @@ class RGBEventPoseNet(nn.Module):
         fused = torch.cat([rgb_feat, event_feat], dim=1)  # [B, feat_dim]
 
         # Regression head
-        pose = self.fusion(fused)
+        # pose = self.fusion(fused)
 
         # Optional: normalize quaternion part (qx,qy,qz,qw)
-        quat = pose[:, 3:]
-        quat_norm = torch.norm(quat, p=2, dim=1, keepdim=True) + 1e-8
-        quat_normalized = quat / quat_norm
-        
-        pose = torch.cat([pose[:, :3], quat_normalized], dim=1)
+        # quat = pose[:, 3:]
+        # quat_norm = torch.norm(quat, p=2, dim=1, keepdim=True) + 1e-8
+        # quat_normalized = quat / quat_norm
+        # quat_normalized = F.normalize(quat, p=2, dim=1)
+        # quat_normalized = torch.clamp(quat_normalized, -1.0, 1.0)
+        # pose = torch.cat([pose[:, :3], quat_normalized], dim=1)
 
+
+        pos = self.pos_head(fused)
+        rot = self.rot_head(fused)
+        rot = F.normalize(rot, p=2, dim=1)
+        rot = torch.clamp(rot, -1.0, 1.0)
+        pose = torch.cat([pos, rot], dim=1)
+        
+
+        # final 7D output: [tx, ty, tz, qx, qy, qz, qw]
         return pose
 
 

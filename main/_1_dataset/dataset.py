@@ -10,6 +10,15 @@ from albumentations.pytorch import ToTensorV2
 from scipy.spatial.transform import Rotation as R
 import numpy as np
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="PIL")  # hides most PIL/PNG warnings
+warnings.filterwarnings("ignore", message="libpng warning")           # specifically targets the libpng spam
+warnings.filterwarnings("ignore", message=".*eXIf: duplicate.*")
+
+# Silence libpng via environment (most effective)
+import os
+os.environ["LIBPNG_NO_WARNINGS"] = "1"
+
 class SatellitePoseDataset(Dataset):
     def __init__(self, split='train', satellite='cassini', sequence='1', distance='close'):
         """
