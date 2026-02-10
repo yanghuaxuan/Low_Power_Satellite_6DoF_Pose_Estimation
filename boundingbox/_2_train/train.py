@@ -13,7 +13,7 @@ import argparse
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import autocast, GradScaler
 
-from main._1_dataset.dataset import SatellitePoseDataset
+from pose._1_dataset.dataset import SatellitePoseDataset
 from model import RGBEventPoseNet
 
 import warnings
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs",       type=int,   default=100,      help="Number of epochs")
     parser.add_argument("--lr",           type=float, default=1e-3,     help="Learning rate")
     parser.add_argument("--satellite",    type=str,   default="cassini", help="Satellite name")
-    parser.add_argument("--save_dir",     type=str,   default="main/_2_train/runs", help="Save directory")
+    parser.add_argument("--save_dir",     type=str,   default="boundingbox/_2_train/runs", help="Save directory")
     
     args = parser.parse_args()
     main(args)
