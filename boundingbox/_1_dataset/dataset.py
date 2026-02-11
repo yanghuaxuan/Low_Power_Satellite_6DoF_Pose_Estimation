@@ -51,6 +51,7 @@ class SatelliteBBDataset(Dataset):
             # dict {"annotations": [{"filename_rgb": 00001_rgb.png, "filename_event": 00001_event.png, 
             #       "bbox": [ x1, y1, x2, y2 ] }] }
         
+        
         # Only transform if split is train (separate for rgb and event frames)
         if split == 'train':
             # Common transform for RGB and event images: rotation, translation, gaussian blur
@@ -60,7 +61,7 @@ class SatelliteBBDataset(Dataset):
                 A.GaussianBlur(blur_limit=(3,7), p=0.4),
             ], 
             additional_targets={'event': 'image'},
-            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']),
+            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'], clip=True),
             # pascal_voc: [x_min, y_min, x_max, y_max]
             # yolo: [cx, cy, w, h]
             )
@@ -102,7 +103,7 @@ class SatelliteBBDataset(Dataset):
             # Val/test: only normalization + ToTensor (no augmentations)
             self.common_transform = A.Compose([], 
                 additional_targets={'event': 'image'},
-                bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']),
+                bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels'], clip=True),
                 # pascal_voc: [x_min, y_min, x_max, y_max]
                 # yolo: [cx, cy, w, h]
             )
@@ -138,6 +139,7 @@ class SatelliteBBDataset(Dataset):
         
         # Get original bbox: [x1, y1, x2, y2] absolute pixels + check its correct
         bbox = label_dict['bbox']
+        # bbox = list(label_dict['bbox'])
         
         # Apply common augmentations
         augmented = self.common_transform(
@@ -166,6 +168,6 @@ class SatelliteBBDataset(Dataset):
         cy = max(0.0, min(1.0, cy))
         w = max(0.0, min(1.0, w))
         h = max(0.0, min(1.0, h))
-        bbox = np.array([cx, cy, w, h], dtype=np.float32)
+        bbox_yolo = np.array([cx, cy, w, h], dtype=np.float32)
 
-        return rgb_img.float() / 255.0, event_img.float()/ 255.0, bbox
+        return rgb_img.float() / 255.0, event_img.float()/ 255.0, bbox_yolo

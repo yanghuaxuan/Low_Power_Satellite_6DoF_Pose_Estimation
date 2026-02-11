@@ -32,9 +32,16 @@ def yolo_loss(pred, target, lambda_box=5.0, lambda_obj=1.0, lambda_cls=0.5):
     B, gh, gw, _ = pred.shape
     device = pred.device
 
-    # Create grid offsets
-    grid_x = torch.arange(gw, device=device).view(1, 1, gw, 1).expand(B, gh, gw, 1)
-    grid_y = torch.arange(gh, device=device).view(1, gh, 1, 1).expand(B, gh, gw, 1)
+    # Create grid offsets correctly
+    grid_y, grid_x = torch.meshgrid(
+        torch.arange(gh, device=device),
+        torch.arange(gw, device=device),
+        indexing='ij'
+    )
+    grid_x = grid_x.float().unsqueeze(0).unsqueeze(-1)  # [1, gh, gw, 1]
+    grid_y = grid_y.float().unsqueeze(0).unsqueeze(-1)  # [1, gh, gw, 1]
+    grid_x = grid_x.expand(B, -1, -1, 1)
+    grid_y = grid_y.expand(B, -1, -1, 1)
 
     # Sigmoid activations for cx/cy/obj/class
     pred[..., :2] = torch.sigmoid(pred[..., :2])   # cx, cy offsets
