@@ -23,51 +23,84 @@ import os
 os.environ["LIBPNG_NO_WARNINGS"] = "1"
 
 ##################### YOLO-style loss (simplified for single-class) #####################
-def yolo_loss(pred, target, lambda_box=5.0, lambda_obj=1.0, lambda_cls=0.5):
+def yolo_loss(pred, target):
     """
-    Simplified YOLO loss for single-class detection.
-    pred: [B, gh, gw, 6] → cx, cy, w, h, obj_conf, class_prob
-    target: [B, 4] → normalized [cx, cy, w, h] (one bbox per image for simplicity)
+    YOLO-style loss for single-class, single-object-per-image detection.
+    
+    pred:   [B, gh, gw, 6]    [cx_offset, cy_offset, w, h] normalized [0,1] relative to each cell + obj_conf, class_prob
+
+    target: [B, 4]            [cx, cy, w, h] normalized [0,1] relative to image
+
     """
     B, gh, gw, _ = pred.shape
     device = pred.device
 
-    # Create grid offsets correctly
+    # ── 1. Prepare grid coordinates ──
     grid_y, grid_x = torch.meshgrid(
-        torch.arange(gh, device=device),
-        torch.arange(gw, device=device),
+        torch.arange(gh, device=device, dtype=torch.float32),
+        torch.arange(gw, device=device, dtype=torch.float32),
         indexing='ij'
     )
-    grid_x = grid_x.float().unsqueeze(0).unsqueeze(-1)  # [1, gh, gw, 1]
-    grid_y = grid_y.float().unsqueeze(0).unsqueeze(-1)  # [1, gh, gw, 1]
-    grid_x = grid_x.expand(B, -1, -1, 1)
-    grid_y = grid_y.expand(B, -1, -1, 1)
+    grid_x = grid_x.unsqueeze(0).unsqueeze(-1)   # [1, gh, gw, 1]
+    grid_y = grid_y.unsqueeze(0).unsqueeze(-1)   # [1, gh, gw, 1]
 
-    # Sigmoid activations for cx/cy/obj/class
-    pred[..., :2] = torch.sigmoid(pred[..., :2])   # cx, cy offsets
-    pred[..., 4:] = torch.sigmoid(pred[..., 4:])   # obj_conf, class_prob
+    # ── 2. Decode predictions ──
+    pred_cx = pred[..., 0] # normalized offset [0,1] within cell
+    pred_cy = pred[..., 1] # normalized offset [0,1] within cell
+    pred_w  = pred[..., 2] # normalized width [0,1] relative to cell
+    pred_h  = pred[..., 3] # normalized height [0,1] relative to cell
+    pred_obj = pred[..., 4] # objectness confidence [0,1]
+    pred_cls = pred[..., 5]  # class prob (single class) [0,1]
 
-    # Add grid offsets to cx/cy
-    pred[..., 0] += grid_x / gw     # absolute cx
-    pred[..., 1] += grid_y / gh     # absolute cy
+    # Reshape to [B, gh*gw, 6] for easier matching
+    pred_boxes = torch.stack([pred_cx, pred_cy, pred_w, pred_h], dim=-1)  # [B, gh, gw, 4]
+    pred_boxes = pred_boxes.view(B, -1, 4)                                # [B, num_cells, 4]
+    pred_obj   = pred_obj.view(B, -1)                                     # [B, num_cells]
+    pred_cls   = pred_cls.view(B, -1)                                     # [B, num_cells]
 
-    # Flatten predictions for easier matching
-    pred = pred.view(B, -1, 6)      # [B, gh*gw, 6]
+    # ── 3. Find responsible grid cell (cell containing GT center) ──
+    cell_x = (target[:, 0] * gw).floor().long().clamp(0, gw - 1)   # grid column index [0, gw-1] [B]
+    cell_y = (target[:, 1] * gh).floor().long().clamp(0, gh - 1)   # grid row index [0, gh-1] [B]
 
-    # For simplicity: assume one ground truth bbox per image (common for satellite)
-    # In real YOLO you'd match multiple GTs per grid cell
-    gt_cx, gt_cy, gt_w, gt_h = target[:, 0], target[:, 1], target[:, 2], target[:, 3]
+    # ── 4. Prepare target (from image to grid) ──
+    gt_cx = target[:, 0] * gw  - cell_x
+    gt_cy = target[:, 1] * gh  - cell_y
+    gt_w = target[:, 2] * gw    
+    gt_h = target[:, 3] * gh    
 
-    # Compute IoU (simplified CIoU or GIoU can be used later)
-    # Here: simple MSE on box + BCE on obj_conf + BCE on class
-    box_loss = nn.MSELoss()(pred[..., :4], target.unsqueeze(1).expand(-1, pred.size(1), -1))
-    obj_loss = nn.BCELoss()(pred[..., 4], torch.ones_like(pred[..., 4]))  # assume object exists
-    cls_loss = nn.BCELoss()(pred[..., 5], torch.zeros_like(pred[..., 5]))  # class=0
+    # Create target boxes (broadcast to all cells, but loss only on responsible)
+    target_boxes = torch.stack([gt_cx, gt_cy, gt_w, gt_h], dim=1).unsqueeze(1)  # [B, 1, 4]
+    target_boxes = target_boxes.expand(-1, gh*gw, -1)                           # [B, num_cells, 4]
 
-    total_loss = lambda_box * box_loss + lambda_obj * obj_loss + lambda_cls * cls_loss
+    # Create target tensors [B, gh*gw]
+    target_obj = torch.zeros(B, gh*gw, device=device)   # 1 only for responsible cell
+    target_cls = torch.zeros(B, gh*gw, device=device)   # 1 for correct class
+
+    # Set responsible cells
+    batch_idx = torch.arange(B, device=device)
+    flat_idx = cell_y * gw + cell_x
+    target_obj[batch_idx, flat_idx] = 1.0
+    target_cls[batch_idx, flat_idx] = 1.0  # class = 1 (object present)
+
+    # ── 5. Compute losses ──
+    # Box loss — only on responsible cells (where target_obj == 1)
+    box_mask = target_obj > 0.5
+    box_loss = 0.0
+    if box_mask.any():
+        box_loss = nn.MSELoss(reduction='none')(pred_boxes, target_boxes)
+        box_loss = box_loss.mean(dim=-1)                # [B, num_cells]
+        box_loss = (box_loss * box_mask.float()).sum() / box_mask.sum().clamp(min=1)
+
+    # Objectness loss — BCE everywhere
+    obj_loss = nn.BCELoss()(pred_obj, target_obj)
+
+    # Class loss — BCE on responsible cells (or everywhere if you want)
+    cls_loss = nn.BCELoss()(pred_cls, target_cls)
+
+    # Total
+    total_loss = 5.0 * box_loss + 1.0 * obj_loss + 0.5 * cls_loss
 
     return total_loss, box_loss, obj_loss, cls_loss
-
 
 ##################### Train one epoch #####################
 def train_one_epoch(model, epoch, writer, loader, optimizer, criterion, device):
