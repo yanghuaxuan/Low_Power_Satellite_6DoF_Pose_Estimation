@@ -97,7 +97,7 @@ def yolo_loss(pred, target):
     # Class loss — BCE on responsible cells (or everywhere if you want)
     cls_loss = nn.BCELoss()(pred_cls, target_cls)
 
-    # Total
+    # Total loss average per sample in the batch
     total_loss = 5.0 * box_loss + 1.0 * obj_loss + 0.5 * cls_loss
 
     return total_loss, box_loss, obj_loss, cls_loss
