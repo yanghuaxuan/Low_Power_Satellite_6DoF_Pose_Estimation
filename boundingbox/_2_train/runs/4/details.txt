@@ -12,4 +12,4 @@ Notes: Notes: total_loss = 20 * box_loss (CIoU) + 1 * p_obj_loss (BCE) + 0.5 * p
 Notes: patience 60 + max epochs 500 (keep it high for convergence)
 longer training: min_delta_pct from 0.005 (0.5%) to 0.0005 (0.05%)
 increase weight decay: from 1e-5 to 3e-5
-Results: 170 epochs: train_loss_box=0.33 val_loss_box=0.3
+Results: 170 epochs: train_loss_box=0.33 val_loss_box=0.3 (BETTER THAN PREVIOUS)
