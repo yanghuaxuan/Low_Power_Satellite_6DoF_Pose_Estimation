@@ -54,14 +54,14 @@ def postprocess(pred, conf_thresh=0.2, iou_thresh=0.4):
     # Filter by confidence
     keep = scores > conf_thresh # [B, num_cells] boolean mask
 
-    # print(f"DEBUG: Scores max: {scores.max().item():.4f}")
-    # print(f"DEBUG: Obj_conf max: {pred[..., 4].max().item():.4f}")
-    # print(f"DEBUG: Class_prob max: {pred[..., 5].max().item():.4f}")
-    # print("\n")
-    # print(f"DEBUG: Scores > {conf_thresh}: {scores[keep]}")
-    # print(f"DEBUG: Obj_conf > {conf_thresh}: {pred[..., 4][keep]}")
-    # print(f"DEBUG: Class_prob > {conf_thresh}: {pred[..., 5][keep]}")
-    # print("\n")
+    print(f"DEBUG: Scores max: {scores.max().item():.4f}")
+    print(f"DEBUG: Obj_conf max: {pred[..., 4].max().item():.4f}")
+    print(f"DEBUG: Class_prob max: {pred[..., 5].max().item():.4f}")
+    print("\n")
+    print(f"DEBUG: Scores > {conf_thresh}: {scores[keep]}")
+    print(f"DEBUG: Obj_conf > {conf_thresh}: {pred[..., 4][keep]}")
+    print(f"DEBUG: Class_prob > {conf_thresh}: {pred[..., 5][keep]}")
+    print("\n")
 
     final_boxes_list = [] # list of N [x1,y1,x2,y2] normalized [0,1] relative to image
     final_scores_list = [] # list of N confidence scores for the final boxes
@@ -261,7 +261,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Event-based Bounding Box Model")
     parser.add_argument("--model_path", type=str, default="boundingbox/_2_train/runs/", help="Path to model folder")
-    parser.add_argument("--model_name", type=str, default="8", help="Model name (subfolder in runs)")
+    parser.add_argument("--model_name", type=str, default="11", help="Model name (subfolder in runs)")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size (keep 1 for accurate timing)")
     parser.add_argument("--satellite", type=str, default="cassini", help="Satellite name")
     parser.add_argument("--sequence", type=str, default="1", help="Sequence for real data")

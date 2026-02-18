@@ -118,7 +118,7 @@ def yolo_loss(pred, target):
     distance = torch.sqrt(dx**2 + dy**2)                  # [B, gh, gw]
 
     # Gaussian weight: 1.0 at center, falls off quickly
-    sigma = 0.7  # smaller sigma = sharper peak, larger = broader
+    sigma = 1.2  # smaller sigma = sharper peak, larger = broader
     gaussian_weight = torch.exp(-distance**2 / (2 * sigma**2))  # [B, gh, gw]
 
     # Scale down toward box edges (linear falloff from center to edge)
@@ -129,10 +129,10 @@ def yolo_loss(pred, target):
     max_edge_dist_y = torch.abs(half_h[:, None, None]) # [B, gh, gw]
 
     # [B, gh, gw], normalized to [0,1] where 0 at center, 1 at farthest edge
-    edge_dist = torch.min(edge_dist_x/max_edge_dist_x, edge_dist_y/max_edge_dist_y) 
+    edge_dist = torch.min(edge_dist_x/max_edge_dist_x+1e-6, edge_dist_y/max_edge_dist_y+1e-6) 
 
     # [B, gh, gw] Switch to 1 at center, 0 at farthest edge
-    edge_falloff = 1.0 - edge_dist  
+    edge_falloff = torch.clamp(1.0 - edge_dist, min=0.0, max=1.0)
 
     # Final soft target: Gaussian peak × edge falloff
     soft_target = gaussian_weight * edge_falloff  # [B, gh, gw]
@@ -218,7 +218,7 @@ def yolo_loss(pred, target):
     cls_loss = focal_loss(pred_cls, target_cls, gamma=2.0, alpha=0.75)
 
     # Total loss (average per sample in the batch)
-    total_loss = 10.0 * box_loss + 10.0 * obj_loss + 10.0 * cls_loss
+    total_loss = 10.0 * box_loss + 20.0 * obj_loss + 10.0 * cls_loss
 
     return total_loss, box_loss, obj_loss, cls_loss
 

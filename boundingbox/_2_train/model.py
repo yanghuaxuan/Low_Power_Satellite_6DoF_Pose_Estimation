@@ -74,9 +74,11 @@ class EventBBNet(nn.Module):
         pred[:, 2:4] = torch.exp(pred[:, 2:4])            # w, h → positive & can be >>1
         pred[:, 4:]  = torch.sigmoid(pred[:, 4:])         # obj_conf, class_prob → [0,1]
 
-        # Reshape from [B, 6, H/32, W/32] -> [B, grid_h, grid_w, 6]
+        # Get shape values from [B, 6, H/32, W/32]
         B, C, gh, gw = pred.shape
-        pred = pred.permute(0, 2, 3, 1).contiguous()
+
+        # Reshape from [B, 6, H/32, W/32] -> [B, grid_h, grid_w, 6]
+        pred = pred.permute(0, 2, 3, 1).contiguous() 
 
         # Prediction: [B, gh, gw, 6] (for each grid -> 6)
         return pred
