@@ -58,9 +58,8 @@ class EventBBNet(nn.Module):
         )
 
         # Bias for obj_conf & class_prob → start with higher logit (~0.5–0.9 prob)
-        nn.init.constant_(self.head.bias[4], 4.0)  # logit(0.98) ≈ 4.0
-        nn.init.constant_(self.head.bias[5], 2.0)  # logit(~0.88)
-
+        nn.init.constant_(self.head.bias[4], 10.0)  # logit(0.99995) ≈ 4.0
+        nn.init.constant_(self.head.bias[5], 2.0)  # logit(~0.88) ≈ 2.0
 
     def forward(self, event):
         # Feature extraction: [B, C=1, H, W] -> [B, C*16, H/32, W/32]

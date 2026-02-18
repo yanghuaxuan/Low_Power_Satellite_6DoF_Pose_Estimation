@@ -49,11 +49,15 @@ def yolo_loss(pred, target):
     pred_obj   = pred_obj.view(B, -1)                                     # [B, num_cells]
     pred_cls   = pred_cls.view(B, -1)                                     # [B, num_cells]
 
-    # ── 2. Find responsible grid cell (cell containing GT center) ──
-    cell_x = (target[:, 0] * gw).floor().long().clamp(0, gw - 1)   # grid column index [0, gw-1] [B]
-    cell_y = (target[:, 1] * gh).floor().long().clamp(0, gh - 1)   # grid row index [0, gh-1] [B]
 
-    # ── 3. Prepare target (from image to grid) ──
+
+
+    # ── 2. Prepare target_boxes ──
+
+    # Target center cell indexes (which cell contains GT center)
+    cell_x = (target[:, 0] * gw).floor().long().clamp(0, gw - 1)   # [0, gw-1] [B]
+    cell_y = (target[:, 1] * gh).floor().long().clamp(0, gh - 1)   # [0, gh-1] [B]
+
     gt_cx = target[:, 0] * gw  - cell_x
     gt_cy = target[:, 1] * gh  - cell_y
     gt_w = target[:, 2] * gw    
@@ -63,7 +67,9 @@ def yolo_loss(pred, target):
     target_boxes = torch.stack([gt_cx, gt_cy, gt_w, gt_h], dim=1).unsqueeze(1)  # [B, 1, 4]
     target_boxes = target_boxes.expand(-1, gh*gw, -1)                           # [B, num_cells, 4]
 
-    # ── 4. Prepare target (target_obj and target_cls) ──
+
+
+    # ── 3. Prepare target_obj and target_cls ──
 
     # Create target tensors [B, gh*gw]
     target_obj = torch.zeros(B, gh*gw, device=device)   # 1 only for responsible cell
@@ -77,14 +83,14 @@ def yolo_loss(pred, target):
     grid_x_centers = grid_x_centers[None, None, :]  # [1, 1, gw]
     grid_y_centers = grid_y_centers[None, :, None]  # [1, gh, 1]
 
-    # - 4.1 - Only 1 responsible cell (the one containing GT center)
+    # - 3.1 - Only 1 responsible cell (the one containing GT center)
     # Set responsible cells
     # batch_idx = torch.arange(B, device=device)
     # flat_idx = cell_y * gw + cell_x
     # target_obj[batch_idx, flat_idx] = 1.0
     # target_cls[batch_idx, flat_idx] = 1.0  # class = 1 (object present)
 
-    # - 4.2 - Set all cells that overlap GT box as responsible (all to 1)
+    # - 3.2 - Set all cells that overlap GT box as responsible (all to 1)
 
     # GT box corners in relative image coords
     # gt_x1 = (target[:, 0] - target[:, 2]/2) * gw   # left edge
@@ -102,7 +108,7 @@ def yolo_loss(pred, target):
     # target_obj[flat_inside] = 1.0 # [B, num_cells]
     # target_cls[flat_inside] = 1.0 # [B, num_cells]
 
-    # - 4.3 - Set all cells that overlap GT box as responsible (gradual with distance to GT center)
+    # - 3.3 - Set all cells that overlap GT box as responsible (gradual with distance to GT center)
 
     # GT center in relative image coords
     gt_center_x = target[:, 0] * gw  # [B]
@@ -117,8 +123,8 @@ def yolo_loss(pred, target):
     dy = grid_y_centers - gt_center_y[:, None, None]      # [B, gh, gw]
     distance = torch.sqrt(dx**2 + dy**2)                  # [B, gh, gw]
 
-    # Gaussian weight: 1.0 at center, falls off quickly
-    sigma = 1.2  # smaller sigma = sharper peak, larger = broader
+    # Gaussian weight: 1.0 at center, falls off with distance
+    sigma = 1.6  # smaller sigma = sharper peak, larger = broader
     gaussian_weight = torch.exp(-distance**2 / (2 * sigma**2))  # [B, gh, gw]
 
     # Scale down toward box edges (linear falloff from center to edge)
@@ -149,14 +155,12 @@ def yolo_loss(pred, target):
     target_cls[batch_idx, center_idx] = 1.0
 
 
-    
-
-    # ── 5. Compute losses ──
+    # ── 4. Compute losses ──
     # Box loss — only on responsible cells (where target_obj == 1)
     box_mask = target_obj > 0.5
     box_loss = 0.0
 
-    # - 5.1 - MSE on box parameters (simple but less effective)
+    # - 4.1 - MSE on box parameters (simple but less effective)
     # Box loss is measured in [0,1] normalized grid units
     # box_loss of 1: entire cell off (720x800 image → 22.5x25 pixels)
     # Aim for box_loss ~< 0.2 (4.5x5 pixels)
@@ -165,7 +169,7 @@ def yolo_loss(pred, target):
     #     box_loss = box_loss.mean(dim=-1)                # [B, num_cells]
     #     box_loss = (box_loss * box_mask.float()).sum() / box_mask.sum().clamp(min=1)
 
-    # - 5.2 - CIoU loss (more complex but better convergence)
+    # - 4.2 - CIoU loss on boxes
     # CIoU is in [0,1] (higher is better, 1 is perfect overlap)
     # Box loss is 1 - CIoU, so 0 is perfect, 1 is no overlap very bad
     # Aim for box_loss ~< 0.2
@@ -211,14 +215,21 @@ def yolo_loss(pred, target):
         ciou_loss = (1 - ciou) * box_mask.float()
         box_loss = ciou_loss.sum() / box_mask.sum().clamp(min=1)
 
-    # Objectness loss — BCE everywhere
-    obj_loss = focal_loss(pred_obj, target_obj, gamma=2.0, alpha=0.25)
+    # - 4.3 - Focal loss on objectness confidence
+    # far_mask = distance > 4.0  # [B, gh, gw]
+    obj_loss = focal_loss(pred_obj, target_obj, gamma=4.0, alpha=0.25)
+    # obj_loss[far_mask] = 0.0   # ignore very distant negatives
+    # obj_loss = obj_loss.mean() * remove mean from focal_loss and apply after cls_loss
 
-    # Class loss — BCE on responsible cells (or everywhere if you want)
+    # - 4.4 - Focal loss on class probability (same target as objectness for single-class)
     cls_loss = focal_loss(pred_cls, target_cls, gamma=2.0, alpha=0.75)
 
+
+
+    # ── 5. Compute final loss: weight each component ──
+
     # Total loss (average per sample in the batch)
-    total_loss = 10.0 * box_loss + 20.0 * obj_loss + 10.0 * cls_loss
+    total_loss = 10.0 * box_loss + 150.0 * obj_loss + 60.0 * cls_loss
 
     return total_loss, box_loss, obj_loss, cls_loss
 
@@ -294,7 +305,7 @@ def main(args):
     print(f"Using device: {device}")
 
     # Create model directory with sequential numbering
-    counter = 3
+    counter = 13
     while True:
         model_subdir = f"{counter}"
         model_dir = os.path.join(args.save_dir, model_subdir)

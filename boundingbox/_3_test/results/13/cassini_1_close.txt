@@ -1,0 +1,9 @@
+Evaluated Model: boundingbox/_2_train/runs//13/best_model.pth
+Test Dataset: cassini_1_close 
+Samples evaluated: 137
+
+Mean IoU: 0.0000
+Avg Latency: 19.95 ms
+Avg FPS: 50.13
+Avg Power: 102.7 W
+Estimated energy per sample: 2048.0 mJ
