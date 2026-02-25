@@ -32,7 +32,10 @@ class SatelliteBBDataset(Dataset):
         distance: 'close' or 'far' (only in test with real data)
 
         """
-        self.root_dir = "_dataset/"
+        # Compute absolute path to _dataset/ (works from any working directory)
+        current_file = os.path.abspath(__file__)
+        dataset_root = os.path.dirname(current_file)
+        self.root_dir = os.path.join(dataset_root, "_dataset")
 
         # Define paths, depending on train / val / test
         if 'train' in split:
