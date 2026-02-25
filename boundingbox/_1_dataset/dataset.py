@@ -19,6 +19,10 @@ warnings.filterwarnings("ignore", message=".*eXIf: duplicate.*")
 import os
 os.environ["LIBPNG_NO_WARNINGS"] = "1"
 
+
+def flip_event_polarity(img, **kwargs):
+    return -img
+
 class SatelliteBBDataset(Dataset):
     def __init__(self, split='train', satellite='cassini', sequence='1', distance='close'):
         """
@@ -79,7 +83,7 @@ class SatelliteBBDataset(Dataset):
 
             # Event-specific augmentations: ignore polarity, event noise, event patch noise (quadrilateral)
             self.event_transform = A.Compose([
-                A.Lambda(image=lambda img,**kw: -img if np.random.rand() < 0.3 else img, p=0.3), # randomly flip sign of events (simple polarity noise)
+                A.Lambda(image=flip_event_polarity, p=0.3), # randomly flip sign of events (simple polarity noise)
                 A.GaussNoise(var_limit=(10.0, 50.0), p=0.4),   # uniform-like Gaussian noise
                 A.PixelDropout(dropout_prob=0.01, p=0.4),  # drops ~1% of pixels to black
                 A.OneOf([
